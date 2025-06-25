@@ -7,41 +7,37 @@ export default async function handler(req, res) {
         return res.status(405).json({ error: 'Método não permitido' });
     }
 
-    // Confirma o recebimento do webhook imediatamente
     res.status(200).json({ received: true });
 
     try {
         const data = req.body;
         console.log('📩 Webhook recebido:', JSON.stringify(data, null, 2));
 
-        // ID do cliente
-        const clienteIdRaw = data?.contact?.id || data?.customer || data?.customer_id;
-        const clienteId = clienteIdRaw?.trim();
+        const clienteId = data?.contact?.id || data?.customer || data?.customer_id;
         if (!clienteId) {
-            console.log('⚠️ ID do cliente não encontrado.');
+            console.log('⚠️ ID do cliente não encontrado no corpo do webhook.');
             return;
         }
 
-        // Caminhos dos arquivos
         const clienteCarteiraPath = path.resolve(process.cwd(), 'api/clienteCarteira.json');
-        const carteiraResponsavelPath = path.resolve(process.cwd(), 'api/carteiraResponsavel.json');
+        const fluxoCarteiraPath = path.resolve(process.cwd(), 'api/fluxoCarteira.json');
 
         const clienteCarteira = JSON.parse(fs.readFileSync(clienteCarteiraPath, 'utf-8'));
-        const carteiraResponsavel = JSON.parse(fs.readFileSync(carteiraResponsavelPath, 'utf-8'));
+        const fluxoCarteira = JSON.parse(fs.readFileSync(fluxoCarteiraPath, 'utf-8'));
 
-        // Identifica carteira do cliente
-        const carteiraRaw = data.wallet || clienteCarteira[clienteId];
         const carteira = data.wallet || clienteCarteira[clienteId];
-        const operador = carteiraResponsavel[carteira?.toUpperCase()];
-
-
-        if (!carteira || !operador) {
-            console.log(`⚠️ Carteira ou operador não encontrados para cliente ${clienteId}`);
+        if (!carteira) {
+            console.log(`⚠️ Carteira não encontrada para cliente ${clienteId}`);
             return;
         }
 
-        // Envia redirecionamento
-        const forwardResponse = await fetch(`${process.env.API_BASE_URL}/forward-to-customer`, {
+        const fluxoId = fluxoCarteira[carteira.toUpperCase()];
+        if (!fluxoId) {
+            console.log(`⚠️ Fluxo não encontrado para carteira ${carteira}`);
+            return;
+        }
+
+        const response = await fetch(`${process.env.API_BASE_URL}/start-flow`, {
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${process.env.API_TOKEN}`,
@@ -49,15 +45,15 @@ export default async function handler(req, res) {
             },
             body: JSON.stringify({
                 customer: clienteId,
-                employee: operador
+                flow: fluxoId
             })
         });
 
-        if (!forwardResponse.ok) {
-            const errorBody = await forwardResponse.text();
-            console.error(`❌ Falha ao redirecionar cliente ${clienteId}:`, errorBody);
+        if (!response.ok) {
+            const error = await response.text();
+            console.error(`❌ Erro ao iniciar fluxo para cliente ${clienteId}:`, error);
         } else {
-            console.log(`✅ Cliente ${clienteId} redirecionado com sucesso para ${operador} (carteira ${carteira})`);
+            console.log(`✅ Cliente ${clienteId} direcionado para o fluxo da carteira ${carteira}`);
         }
 
     } catch (e) {
