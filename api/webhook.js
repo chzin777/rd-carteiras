@@ -25,19 +25,25 @@ export default async function handler(req, res) {
     const clienteCarteiraPath = path.resolve(process.cwd(), 'api/clienteCarteira.json');
     const carteiraResponsavelPath = path.resolve(process.cwd(), 'api/carteiraResponsavel.json');
 
+    // Carrega os dados dos arquivos
     const clienteCarteira = JSON.parse(fs.readFileSync(clienteCarteiraPath, 'utf-8'));
     const carteiraResponsavel = JSON.parse(fs.readFileSync(carteiraResponsavelPath, 'utf-8'));
 
-    // Determina carteira e operador
+    // Busca a carteira associada ao cliente
     const carteira = data.wallet || clienteCarteira[clienteId];
-    const operador = carteiraResponsavel[carteira];
-
-    if (!carteira || !operador) {
-      console.log(`⚠️ Carteira ou operador não encontrados para cliente ${clienteId}`);
+    if (!carteira) {
+      console.log(`⚠️ Carteira não encontrada para cliente ${clienteId}`);
       return;
     }
 
-    // Realiza redirecionamento via API
+    // Busca o operador com base no nome normalizado da carteira
+    const operador = carteiraResponsavel[carteira.toUpperCase()];
+    if (!operador) {
+      console.log(`⚠️ Operador não encontrado para a carteira '${carteira}' (cliente ${clienteId})`);
+      return;
+    }
+
+    // Faz o redirecionamento via API
     const forwardResponse = await fetch(`${process.env.API_BASE_URL}/forward-to-customer`, {
       method: 'POST',
       headers: {
