@@ -7,43 +7,33 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Método não permitido' });
   }
 
-  // Confirmação imediata do recebimento do webhook
-  res.status(200).json({ received: true });
+  // Evita interrupção prematura no Vercel
+  res.writeHead(200).end();
 
   try {
     const data = req.body;
     console.log('📩 Webhook recebido:', JSON.stringify(data, null, 2));
 
-    // Tenta identificar o ID do cliente de forma flexível
     const clienteId = data?.contact?.id || data?.customer || data?.customer_id;
     if (!clienteId) {
       console.log('⚠️ ID do cliente não encontrado no corpo do webhook.');
       return;
     }
 
-    // Caminhos absolutos para os arquivos JSON
     const clienteCarteiraPath = path.resolve(process.cwd(), 'api/clienteCarteira.json');
     const carteiraResponsavelPath = path.resolve(process.cwd(), 'api/carteiraResponsavel.json');
 
-    // Carrega os dados dos arquivos
     const clienteCarteira = JSON.parse(fs.readFileSync(clienteCarteiraPath, 'utf-8'));
     const carteiraResponsavel = JSON.parse(fs.readFileSync(carteiraResponsavelPath, 'utf-8'));
 
-    // Busca a carteira associada ao cliente
     const carteira = data.wallet || clienteCarteira[clienteId];
-    if (!carteira) {
-      console.log(`⚠️ Carteira não encontrada para cliente ${clienteId}`);
+    const operador = carteiraResponsavel[carteira];
+
+    if (!carteira || !operador) {
+      console.log(`⚠️ Carteira ou operador não encontrados para cliente ${clienteId}`);
       return;
     }
 
-    // Busca o operador com base no nome normalizado da carteira
-    const operador = carteiraResponsavel[carteira.toUpperCase()];
-    if (!operador) {
-      console.log(`⚠️ Operador não encontrado para a carteira '${carteira}' (cliente ${clienteId})`);
-      return;
-    }
-
-    // Faz o redirecionamento via API
     const forwardResponse = await fetch(`${process.env.API_BASE_URL}/forward-to-customer`, {
       method: 'POST',
       headers: {
@@ -56,11 +46,13 @@ export default async function handler(req, res) {
       })
     });
 
+    const responseText = await forwardResponse.text();
+
     if (!forwardResponse.ok) {
-      const errorBody = await forwardResponse.text();
-      console.error(`❌ Falha ao redirecionar cliente ${clienteId}:`, errorBody);
+      console.error(`❌ Falha ao redirecionar cliente ${clienteId}:`, responseText);
     } else {
       console.log(`✅ Cliente ${clienteId} redirecionado com sucesso para ${operador} (carteira ${carteira})`);
+      console.log(`🔄 Resposta da API:`, responseText);
     }
 
   } catch (e) {
