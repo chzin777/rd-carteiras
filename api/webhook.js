@@ -7,33 +7,38 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Método não permitido' });
   }
 
-  // Evita interrupção prematura no Vercel
-  res.writeHead(200).end();
+  // Confirma o recebimento do webhook imediatamente
+  res.status(200).json({ received: true });
 
   try {
     const data = req.body;
     console.log('📩 Webhook recebido:', JSON.stringify(data, null, 2));
 
-    const clienteId = data?.contact?.id || data?.customer || data?.customer_id;
+    // ID do cliente
+    const clienteIdRaw = data?.contact?.id || data?.customer || data?.customer_id;
+    const clienteId = clienteIdRaw?.trim();
     if (!clienteId) {
-      console.log('⚠️ ID do cliente não encontrado no corpo do webhook.');
+      console.log('⚠️ ID do cliente não encontrado.');
       return;
     }
 
+    // Caminhos dos arquivos
     const clienteCarteiraPath = path.resolve(process.cwd(), 'api/clienteCarteira.json');
     const carteiraResponsavelPath = path.resolve(process.cwd(), 'api/carteiraResponsavel.json');
 
     const clienteCarteira = JSON.parse(fs.readFileSync(clienteCarteiraPath, 'utf-8'));
     const carteiraResponsavel = JSON.parse(fs.readFileSync(carteiraResponsavelPath, 'utf-8'));
 
+    // Identifica carteira do cliente
     const carteira = data.wallet || clienteCarteira[clienteId];
-    const operador = carteiraResponsavel[carteira];
+    const operador = carteiraResponsavel[carteira?.toUpperCase()];
 
     if (!carteira || !operador) {
       console.log(`⚠️ Carteira ou operador não encontrados para cliente ${clienteId}`);
       return;
     }
 
+    // Envia redirecionamento
     const forwardResponse = await fetch(`${process.env.API_BASE_URL}/forward-to-customer`, {
       method: 'POST',
       headers: {
@@ -46,13 +51,11 @@ export default async function handler(req, res) {
       })
     });
 
-    const responseText = await forwardResponse.text();
-
     if (!forwardResponse.ok) {
-      console.error(`❌ Falha ao redirecionar cliente ${clienteId}:`, responseText);
+      const errorBody = await forwardResponse.text();
+      console.error(`❌ Falha ao redirecionar cliente ${clienteId}:`, errorBody);
     } else {
       console.log(`✅ Cliente ${clienteId} redirecionado com sucesso para ${operador} (carteira ${carteira})`);
-      console.log(`🔄 Resposta da API:`, responseText);
     }
 
   } catch (e) {
