@@ -7,6 +7,7 @@ export default async function handler(req, res) {
         return res.status(405).json({ error: 'Método não permitido' });
     }
 
+    // Confirmação imediata
     res.status(200).json({ received: true });
 
     try {
@@ -19,12 +20,15 @@ export default async function handler(req, res) {
             return;
         }
 
+        // Caminhos dos arquivos JSON
         const clienteCarteiraPath = path.resolve(process.cwd(), 'api/clienteCarteira.json');
         const fluxoCarteiraPath = path.resolve(process.cwd(), 'api/fluxoCarteira.json');
 
+        // Carregamento dos arquivos
         const clienteCarteira = JSON.parse(fs.readFileSync(clienteCarteiraPath, 'utf-8'));
         const fluxoCarteira = JSON.parse(fs.readFileSync(fluxoCarteiraPath, 'utf-8'));
 
+        // Determina a carteira e o fluxo
         const carteira = data.wallet || clienteCarteira[clienteId];
         if (!carteira) {
             console.log(`⚠️ Carteira não encontrada para cliente ${clienteId}`);
@@ -37,7 +41,8 @@ export default async function handler(req, res) {
             return;
         }
 
-        const response = await fetch(`${process.env.API_BASE_URL}/start-flow`, {
+        // Faz o redirecionamento para o fluxo via forward-to-customer
+        const response = await fetch(`${process.env.API_BASE_URL}/v2/forward-to-customer`, {
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${process.env.API_TOKEN}`,
@@ -50,10 +55,10 @@ export default async function handler(req, res) {
         });
 
         if (!response.ok) {
-            const error = await response.text();
-            console.error(`❌ Erro ao iniciar fluxo para cliente ${clienteId}:`, error);
+            const errorText = await response.text();
+            console.error(`❌ Erro ao direcionar cliente ${clienteId} para o fluxo:`, errorText);
         } else {
-            console.log(`✅ Cliente ${clienteId} direcionado para o fluxo da carteira ${carteira}`);
+            console.log(`✅ Cliente ${clienteId} direcionado com sucesso para o fluxo da carteira ${carteira}`);
         }
 
     } catch (e) {
